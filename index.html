@@ -218,7 +218,7 @@
 
   function safeName(type, index) {
     const ext = type === 'gif' ? 'gif' : 'mp4';
-    return `x_${currentTweetId}_${index}.${ext}`;
+    return type === 'gif' ? `gif_${index}.${ext}` : `video_${index}.${ext}`;
   }
 
   async function downloadBlob(url, filename, expected) {
