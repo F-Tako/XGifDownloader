@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0d1117">
+  <meta name="color-scheme" content="dark">
+  <title>X GIF Downloader</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon-192.png">
+  <style>
+    :root{
+      --bg:#0d1117; --panel:#161b22; --panel2:#21262d; --text:#f0f6fc;
+      --muted:#8b949e; --line:#30363d; --accent:#58a6ff; --good:#3fb950;
+      --warn:#d29922; --bad:#f85149;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif}
+    body{min-height:100dvh}
+    .safe{padding:calc(18px + env(safe-area-inset-top)) 16px calc(26px + env(safe-area-inset-bottom))}
+    .app{width:min(680px,100%);margin:0 auto}
+    h1{font-size:27px;line-height:1.15;margin:0 0 7px;font-weight:800;letter-spacing:-.4px}
+    .sub{margin:0;color:var(--muted);font-size:14px;line-height:1.45}
+    button{font:inherit}
+    label{display:block;font-size:13px;font-weight:750;margin:0 0 7px}
+    textarea{width:100%;resize:vertical;min-height:112px;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);font:inherit;font-size:15px;line-height:1.45;padding:13px;outline:none}
+    textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.13)}
+    .row{display:flex;gap:8px;margin-top:10px}
+    .primary,.secondary,.download{border:1px solid transparent;border-radius:12px;font-weight:800;cursor:pointer}
+    .primary{flex:1;padding:14px 12px;background:var(--accent);color:#071521}
+    .secondary{padding:14px 13px;background:var(--panel2);color:var(--text);border-color:var(--line)}
+    .primary:disabled,.secondary:disabled,.download:disabled{opacity:.55;cursor:default}
+    .status{display:none;margin-top:14px;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:11px 12px;color:var(--muted);font-size:13px;line-height:1.45;white-space:pre-wrap}
+    .status.show{display:block}
+    .status.good{border-color:rgba(63,185,80,.5);color:#8ee59d}
+    .status.bad{border-color:rgba(248,81,73,.5);color:#ff9b96}
+    .results{display:grid;gap:12px;margin-top:16px}
+    .card{border:1px solid var(--line);background:var(--panel);border-radius:15px;padding:14px}
+    .preview{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
+    .preview video,.preview img{width:100%;height:100%;object-fit:contain;background:#000}
+    .preview-fallback{display:none;padding:18px;color:var(--muted);font-size:12px;text-align:center}
+    .cardtop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .media-title{font-size:15px;font-weight:800}
+    .meta{font-size:12px;color:var(--muted);margin-top:4px;word-break:break-word}
+    .badge{flex:none;font-size:11px;font-weight:800;border:1px solid var(--line);border-radius:999px;padding:5px 8px;color:var(--muted)}
+    .badge.gif{color:#8ee59d;border-color:rgba(63,185,80,.45)}
+    .download{width:100%;margin-top:13px;padding:13px 12px;background:var(--panel2);border-color:var(--line);color:var(--text)}
+    .download:hover{border-color:var(--accent)}
+    .empty{border:1px dashed var(--line);border-radius:14px;padding:20px 14px;text-align:center;color:var(--muted);font-size:13px}
+    .foot{margin-top:22px;color:var(--muted);font-size:12px;line-height:1.5}
+    .install{display:none;margin-top:10px;width:100%}
+    .install.show{display:block}
+    .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.24);border-top-color:currentColor;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:7px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media (max-width:360px){h1{font-size:24px}.safe{padding-left:12px;padding-right:12px}.row{flex-direction:column}.secondary{width:100%}}
+  </style>
+</head>
+<body>
+<div class="safe">
+  <main class="app">
+    <h1>X GIF Downloader</h1>
+    <p class="sub">링크를 넣으면 형식을 자동 감지하고 아래에 미리보기를 표시합니다. 영상은 MP4, X animated GIF는 실제 GIF로 저장합니다.</p>
+
+    <label for="urlInput">X 게시물 링크</label>
+    <textarea id="urlInput" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://x.com/사용자/status/123..."></textarea>
+
+    <div class="row">
+      <button id="analyzeBtn" class="primary" type="button">미디어 불러오기</button>
+      <button id="pasteBtn" class="secondary" type="button">붙여넣기</button>
+    </div>
+
+    <button id="installBtn" class="secondary install" type="button">홈 화면에 앱 설치</button>
+    <div id="status" class="status" aria-live="polite"></div>
+    <section id="results" class="results"></section>
+
+    <p class="foot">
+      미디어 형식을 자동으로 판별합니다. 일반 영상은 MP4, X에서 animated GIF로 올라온 미디어는 실제 GIF로 저장합니다.
+      일반 동영상을 억지로 GIF로 변환하지 않아 휴대폰 발열·메모리 사용을 줄였습니다.
+    </p>
+  </main>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const API_HOSTS = [
+    'https://api.fxtwitter.com',
+    'https://api-canary.fxtwitter.com'
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const urlInput = $('urlInput');
+  const analyzeBtn = $('analyzeBtn');
+  const pasteBtn = $('pasteBtn');
+  const installBtn = $('installBtn');
+  const statusBox = $('status');
+  const results = $('results');
+
+  let mediaItems = [];
+  let currentTweetId = '';
+  let deferredInstall = null;
+
+  function setStatus(message, kind = '') {
+    statusBox.textContent = message || '';
+    statusBox.className = 'status' + (message ? ' show' : '') + (kind ? ' ' + kind : '');
+  }
+
+  function setBusy(busy) {
+    analyzeBtn.disabled = busy;
+    pasteBtn.disabled = busy;
+    analyzeBtn.innerHTML = busy ? '<span class="spinner"></span>불러오는 중' : '미디어 불러오기';
+  }
+
+
+  function extractTweet(text) {
+    const raw = String(text || '').trim();
+    const m = raw.match(/(?:https?:\/\/)?(?:www\.)?(?:x\.com|twitter\.com)\/([A-Za-z0-9_]+)\/status\/(\d{5,25})/i);
+    if (m) return { user: m[1], id: m[2] };
+    const idOnly = raw.match(/\/status\/(\d{5,25})/i);
+    return idOnly ? { user: '', id: idOnly[1] } : null;
+  }
+
+  function bestMp4(media) {
+    const formats = Array.isArray(media?.formats) ? media.formats : [];
+    const mp4 = formats.filter(f => {
+      const u = String(f?.url || '');
+      const c = String(f?.container || '');
+      return u && (c.toLowerCase() === 'mp4' || /\.mp4(?:\?|$)/i.test(u));
+    });
+    if (mp4.length) {
+      mp4.sort((a, b) => {
+        const aH264 = String(a?.codec || '').toLowerCase() === 'h264' ? 1 : 0;
+        const bH264 = String(b?.codec || '').toLowerCase() === 'h264' ? 1 : 0;
+        if (aH264 !== bH264) return bH264 - aH264;
+        return Number(b?.bitrate || 0) - Number(a?.bitrate || 0);
+      });
+      return String(mp4[0].url || '');
+    }
+    const u = String(media?.url || '');
+    return /\.mp4(?:\?|$)/i.test(u) ? u : '';
+  }
+
+  function toRealGifUrl(media, mp4) {
+    const direct = String(media?.transcode_url || '');
+    if (/\.gif(?:\?|$)/i.test(direct)) return direct;
+    if (!mp4) return '';
+    try {
+      const u = new URL(mp4);
+      if (u.hostname !== 'video.twimg.com') return '';
+      u.protocol = 'https:';
+      u.hostname = 'gif.fxtwitter.com';
+      u.pathname = u.pathname.replace(/\.mp4$/i, '.gif');
+      return u.toString();
+    } catch {
+      return '';
+    }
+  }
+
+  function normalizeMedia(status) {
+    const media = status?.media || {};
+    let all = Array.isArray(media.all) ? media.all.slice() : [];
+    if (!all.length) {
+      if (Array.isArray(media.videos)) all.push(...media.videos);
+      if (Array.isArray(media.photos)) all.push(...media.photos);
+    }
+
+    const seen = new Set();
+    const out = [];
+
+    for (let i = 0; i < all.length; i++) {
+      const m = all[i] || {};
+      let type = String(m.type || '').toLowerCase();
+      if (type === 'animated_gif') type = 'gif';
+      if (!['video', 'gif'].includes(type)) continue;
+
+      const mp4 = bestMp4(m);
+      if (!mp4) continue;
+      const key = m.id || m.id_str || mp4;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      out.push({
+        index: out.length + 1,
+        type,
+        mp4,
+        gif: type === 'gif' ? toRealGifUrl(m, mp4) : '',
+        thumbnail: String(m.thumbnail_url || m.thumbnail || m.poster || ''),
+        width: Number(m.width || 0),
+        height: Number(m.height || 0),
+        duration: Number(m.duration || 0)
+      });
+    }
+    return out;
+  }
+
+  async function fetchStatus(tweetId) {
+    let lastError = null;
+    for (const host of API_HOSTS) {
+      try {
+        const res = await fetch(`${host}/2/status/${encodeURIComponent(tweetId)}`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store'
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (Number(data?.code || 200) !== 200 || !data?.status) {
+          throw new Error(data?.message || '게시물을 불러오지 못했습니다.');
+        }
+        return data.status;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError || new Error('FxTwitter API 연결 실패');
+  }
+
+  function safeName(type, index) {
+    const ext = type === 'gif' ? 'gif' : 'mp4';
+    return `x_${currentTweetId}_${index}.${ext}`;
+  }
+
+  async function downloadBlob(url, filename, expected) {
+    setStatus(`${filename} 준비 중...`);
+    try {
+      const res = await fetch(url, { mode: 'cors', redirect: 'follow' });
+      if (!res.ok) throw new Error(`다운로드 HTTP ${res.status}`);
+      const blob = await res.blob();
+
+      if (expected === 'gif') {
+        const head = new Uint8Array(await blob.slice(0, 6).arrayBuffer());
+        const magic = String.fromCharCode(...head);
+        if (magic !== 'GIF87a' && magic !== 'GIF89a') {
+          throw new Error('서버 응답이 실제 GIF 파일이 아닙니다.');
+        }
+      }
+
+      const local = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = local;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(local);
+        a.remove();
+      }, 3000);
+      setStatus(`${filename} 다운로드를 시작했습니다.`, 'good');
+      return;
+    } catch (err) {
+      // Some media servers do not expose CORS headers. In that case the browser
+      // still gets a direct media URL; opening it is the safest static-web fallback.
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setStatus(
+        `브라우저 보안 때문에 직접 저장을 시작하지 못했습니다.\n새 탭이 열리면 브라우저 메뉴의 '다운로드' 또는 '이미지 저장'을 사용해 주세요.`,
+        ''
+      );
+    }
+  }
+
+  function renderResults() {
+    results.innerHTML = '';
+    if (!mediaItems.length) return;
+
+    mediaItems.forEach((m) => {
+      const card = document.createElement('article');
+      card.className = 'card';
+
+      const top = document.createElement('div');
+      top.className = 'cardtop';
+
+      const left = document.createElement('div');
+      const title = document.createElement('div');
+      title.className = 'media-title';
+      title.textContent = `미디어 ${m.index}`;
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      const dims = m.width && m.height ? `${m.width}×${m.height}` : '해상도 정보 없음';
+      const dur = m.duration ? ` · ${m.duration.toFixed(1)}초` : '';
+      meta.textContent = `${m.type === 'gif' ? 'GIF 자동 감지' : 'MP4 자동 감지'} · ${dims}${dur}`;
+      left.append(title, meta);
+
+      const badge = document.createElement('div');
+      badge.className = 'badge' + (m.type === 'gif' ? ' gif' : '');
+      badge.textContent = m.type === 'gif' ? 'GIF' : 'MP4';
+
+      top.append(left, badge);
+
+      const preview = document.createElement('div');
+      preview.className = 'preview';
+
+      const fallback = document.createElement('div');
+      fallback.className = 'preview-fallback';
+      fallback.textContent = '미리보기를 불러올 수 없습니다.';
+
+      if (m.type === 'gif' && m.gif) {
+        const img = document.createElement('img');
+        img.src = m.gif;
+        img.alt = `미디어 ${m.index} GIF 미리보기`;
+        img.loading = 'lazy';
+        img.addEventListener('error', () => {
+          img.style.display = 'none';
+          fallback.style.display = 'block';
+        });
+        preview.appendChild(img);
+      } else {
+        const video = document.createElement('video');
+        video.src = m.mp4;
+        video.controls = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        if (m.thumbnail) video.poster = m.thumbnail;
+        video.addEventListener('error', () => {
+          video.style.display = 'none';
+          fallback.style.display = 'block';
+        });
+        preview.appendChild(video);
+      }
+      preview.appendChild(fallback);
+
+      const btn = document.createElement('button');
+      btn.className = 'download';
+      btn.type = 'button';
+
+      if (m.type === 'gif' && m.gif) {
+        btn.textContent = 'GIF 다운로드';
+        btn.addEventListener('click', () => downloadBlob(m.gif, safeName('gif', m.index), 'gif'));
+      } else {
+        btn.textContent = 'MP4 다운로드';
+        btn.addEventListener('click', () => downloadBlob(m.mp4, safeName('video', m.index), 'mp4'));
+      }
+
+      card.append(top, preview, btn);
+      results.appendChild(card);
+    });
+  }
+
+  async function analyze() {
+    const ref = extractTweet(urlInput.value);
+    if (!ref) {
+      setStatus('x.com 또는 twitter.com의 게시물 링크를 넣어 주세요.', 'bad');
+      return;
+    }
+
+    currentTweetId = ref.id;
+    mediaItems = [];
+    results.innerHTML = '';
+    setBusy(true);
+    setStatus('게시물 정보를 확인하고 있습니다...');
+
+    try {
+      const status = await fetchStatus(ref.id);
+      mediaItems = normalizeMedia(status);
+      if (!mediaItems.length) {
+        setStatus('이 게시물에서 비디오/GIF 미디어를 찾지 못했습니다.', 'bad');
+      } else {
+        const gifCount = mediaItems.filter(m => m.type === 'gif' && m.gif).length;
+        const mp4Count = mediaItems.length - gifCount;
+        setStatus(`자동 감지 완료 · GIF ${gifCount}개 · MP4 ${mp4Count}개`, 'good');
+        renderResults();
+      }
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      setStatus(`불러오기 실패: ${msg}`, 'bad');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  analyzeBtn.addEventListener('click', analyze);
+
+  pasteBtn.addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) urlInput.value = text;
+    } catch {
+      urlInput.focus();
+      setStatus('브라우저가 클립보드 읽기를 막았습니다. 입력창을 길게 눌러 붙여넣어 주세요.');
+    }
+  });
+
+  // Receive Android PWA share_target query parameters.
+  const params = new URLSearchParams(location.search);
+  const shared = [params.get('url'), params.get('text'), params.get('title')]
+    .filter(Boolean).join(' ');
+  if (shared) {
+    urlInput.value = shared;
+    const ref = extractTweet(shared);
+    if (ref) setTimeout(analyze, 150);
+    history.replaceState(null, '', location.pathname);
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+    installBtn.classList.add('show');
+  });
+
+  installBtn.addEventListener('click', async () => {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    await deferredInstall.userChoice;
+    deferredInstall = null;
+    installBtn.classList.remove('show');
+  });
+
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
