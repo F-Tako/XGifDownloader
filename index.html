@@ -75,7 +75,7 @@
 
     <p class="foot">
       미디어 형식을 자동으로 판별합니다. 일반 영상은 MP4, X에서 animated GIF로 올라온 미디어는 실제 GIF로 저장합니다.
-      일반 동영상을 억지로 GIF로 변환하지 않아 휴대폰 발열·메모리 사용을 줄였습니다. 다운로드 프록시가 설정되면 새 창 없이 바로 저장됩니다.
+      일반 동영상을 억지로 GIF로 변환하지 않아 휴대폰 발열·메모리 사용을 줄였습니다.
     </p>
   </main>
 </div>
@@ -83,10 +83,6 @@
 <script>
 (() => {
   'use strict';
-
-  // Cloudflare Worker 다운로드 프록시 주소
-  // 예: https://xgif-download-proxy.yourname.workers.dev
-  const DOWNLOAD_PROXY = 'https://YOUR-WORKER.workers.dev';
 
   const API_HOSTS = [
     'https://api.fxtwitter.com',
@@ -225,61 +221,50 @@
     return type === 'gif' ? `gif_${index}.${ext}` : `video_${index}.${ext}`;
   }
 
-  function downloadBlob(url, filename, expected) {
-    const proxyReady =
-      DOWNLOAD_PROXY &&
-      !DOWNLOAD_PROXY.includes('YOUR-WORKER') &&
-      /^https:\/\/[^/]+/i.test(DOWNLOAD_PROXY);
+  async function downloadBlob(url, filename, expected) {
+    setStatus(`${filename} 준비 중...`);
+    try {
+      const res = await fetch(url, { mode: 'cors', redirect: 'follow' });
+      if (!res.ok) throw new Error(`다운로드 HTTP ${res.status}`);
+      const blob = await res.blob();
 
-    if (proxyReady) {
-      const proxyUrl =
-        `${DOWNLOAD_PROXY.replace(/\/+$/, '')}/?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+      if (expected === 'gif') {
+        const head = new Uint8Array(await blob.slice(0, 6).arrayBuffer());
+        const magic = String.fromCharCode(...head);
+        if (magic !== 'GIF87a' && magic !== 'GIF89a') {
+          throw new Error('서버 응답이 실제 GIF 파일이 아닙니다.');
+        }
+      }
 
+      const local = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = proxyUrl;
+      a.href = local;
+      a.download = filename;
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
-      a.remove();
-
+      setTimeout(() => {
+        URL.revokeObjectURL(local);
+        a.remove();
+      }, 3000);
       setStatus(`${filename} 다운로드를 시작했습니다.`, 'good');
       return;
+    } catch (err) {
+      // Some media servers do not expose CORS headers. In that case the browser
+      // still gets a direct media URL; opening it is the safest static-web fallback.
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setStatus(
+        `브라우저 보안 때문에 직접 저장을 시작하지 못했습니다.\n새 탭이 열리면 브라우저 메뉴의 '다운로드' 또는 '이미지 저장'을 사용해 주세요.`,
+        ''
+      );
     }
-
-    (async () => {
-      setStatus(`${filename} 준비 중...`);
-      try {
-        const res = await fetch(url, { mode: 'cors', redirect: 'follow' });
-        if (!res.ok) throw new Error(`다운로드 HTTP ${res.status}`);
-        const blob = await res.blob();
-
-        if (expected === 'gif') {
-          const head = new Uint8Array(await blob.slice(0, 6).arrayBuffer());
-          const magic = String.fromCharCode(...head);
-          if (magic !== 'GIF87a' && magic !== 'GIF89a') {
-            throw new Error('서버 응답이 실제 GIF 파일이 아닙니다.');
-          }
-        }
-
-        const local = URL.createObjectURL(blob);
-        const temp = document.createElement('a');
-        temp.href = local;
-        temp.download = filename;
-        temp.style.display = 'none';
-        document.body.appendChild(temp);
-        temp.click();
-        setTimeout(() => {
-          URL.revokeObjectURL(local);
-          temp.remove();
-        }, 3000);
-        setStatus(`${filename} 다운로드를 시작했습니다.`, 'good');
-      } catch {
-        setStatus(
-          `직접 다운로드 서버 주소가 아직 설정되지 않았습니다.\nCloudflare Worker를 배포한 뒤 index.html의 DOWNLOAD_PROXY 주소만 바꾸면 새 창 없이 바로 저장됩니다.`,
-          'bad'
-        );
-      }
-    })();
   }
 
   function renderResults() {
